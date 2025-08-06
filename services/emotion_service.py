@@ -1,4 +1,5 @@
 import os
+import re
 import json
 import requests
 from dotenv import load_dotenv
@@ -22,12 +23,13 @@ def analyze_with_hyperclova(user_text: str) -> dict:
     payload = {
         "messages": [
             {
-                "role": "system",
-                "content": (
-                    "당신은 금융 상담 전문가입니다.\n"
-                    "사용자의 발화를 분석하여 다음 JSON 구조로만 응답하세요:\n"
-                    "{\"primary\": \"감정\", \"confidence\": 0~1, \"triggers\": [\"단어1\", \"단어2\"]}"
-                )
+              "role": "system",
+              "content": (
+                  "당신은 금융 상담 전문가입니다.\n"
+                  "사용자의 발화를 분석하여 반드시 JSON 형식으로만 응답하세요.\n"
+                  "JSON 외의 설명, 텍스트는 절대 포함하지 마세요.\n"
+                  "출력 예시: {\"primary\": \"감정\", \"confidence\": 0.85, \"triggers\": [\"단어1\", \"단어2\"]}"
+              )
             },
             {
                 "role": "user",
@@ -49,5 +51,17 @@ def analyze_with_hyperclova(user_text: str) -> dict:
         raise RuntimeError(f"API 호출 실패: {res.status_code} {res.text}")
 
     data = res.json()
+
     text_output = data["result"]["message"]["content"].strip()
-    return json.loads(text_output)  # 모델이 준 JSON 문자열을 파싱
+
+    # JSON 구조만 뽑기 (중괄호부터 끝까지)
+    match = re.search(r"\{.*\}", text_output, re.DOTALL)
+    if not match:
+        raise RuntimeError(f"모델 응답에 JSON이 없습니다: {text_output}")
+
+    json_str = match.group(0)
+
+    try:
+        return json.loads(json_str)
+    except json.JSONDecodeError as e:
+        raise RuntimeError(f"JSON 파싱 실패: {e} / 원본: {json_str}")
