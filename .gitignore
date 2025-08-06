@@ -1,0 +1,51 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.pdb
+*.pkl
+
+# Virtual Environments
+venv/
+ENV/
+env/
+.venv/
+
+# macOS
+.DS_Store
+
+# IDE / Editor
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# Byte-compiled / optimized / DLL files
+*.so
+
+# Logs
+*.log
+*.out
+*.err
+
+# Unit test / coverage reports
+.coverage
+.tox/
+.nox/
+.pytest_cache/
+
+# Flask / Django stuff
+instance/
+.webassets-cache
+
+# Temporary files
+tmp/
+temp/
+
+# Local config
+config_local.py
+
+# Deployment
+*.bak
+*.swp

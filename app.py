@@ -1,22 +1,19 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, render_template_string
+from pipeline import run_pipeline
 
 app = Flask(__name__)
 
-@app.route("/")
-def home():
-    return "🎉 AI 서버가 실행 중입니다!"
+@app.route("/", methods=["GET", "POST"])
+def root():
+    # HTML Form 입력을 받아 파이프라인 실행
+    # 출력 결과를 HTML로 렌더링
+    pass
 
-@app.route("/simulate", methods=["POST"])
-def simulate():
-    data = request.json
-    investment = data.get("investment", 1000000)
-    rate = data.get("rate", 0.05)
-    profit = investment * rate
-    after_tax = profit * 0.9
-    return jsonify({
-        "예상수익": round(profit),
-        "세후수익": round(after_tax)
-    })
+@app.route("/run", methods=["POST"])
+def run_api():
+    # JSON 입력을 받아 파이프라인 실행
+    # 결과를 JSON으로 반환
+    pass
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000)
+    app.run(host="0.0.0.0", port=5001, debug=True)
