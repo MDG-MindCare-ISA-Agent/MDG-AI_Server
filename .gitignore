@@ -49,3 +49,5 @@ config_local.py
 # Deployment
 *.bak
 *.swp
+
+.env

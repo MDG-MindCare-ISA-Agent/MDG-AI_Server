@@ -3,7 +3,14 @@ from services.emotion_service import analyze_with_hyperclova
 def analyze_emotion(ctx):
     """
     2단계: 감정 분석
-    - HyperCLOVA X API 호출
-    - 주요 감정(primary), confidence, triggers 추출
+    - 사용자 발화(text)를 HyperCLOVA X로 분석
+    - 결과를 ctx["emotion"]에 저장
     """
-    pass
+    text = ctx.get("input", {}).get("text", "")
+    if not text:
+        ctx["emotion"] = {"primary": "중립", "confidence": 0.0, "triggers": []}
+        return ctx
+
+    emotion_result = analyze_with_hyperclova(text)
+    ctx["emotion"] = emotion_result
+    return ctx

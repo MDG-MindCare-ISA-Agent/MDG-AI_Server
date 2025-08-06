@@ -17,6 +17,17 @@ PIPELINES = {
 }
 
 def run_pipeline(name: str, payload: Dict[str, Any]) -> Dict[str, Any]:
-    # name에 해당하는 파이프라인 실행
-    # 각 step은 ctx(dict)를 입력받아 수정 후 반환
-    pass
+    if name not in PIPELINES:
+        raise ValueError(f"unknown pipeline: {name}")
+
+    ctx: Dict[str, Any] = {"input": payload, "_meta": {"pipeline": name}}
+
+    for i, step in enumerate(PIPELINES[name], start=1):
+        ctx = step(ctx)
+        if ctx is None or not isinstance(ctx, dict):
+            raise TypeError(f"Step {i} ({step.__name__}) returned invalid ctx: {ctx!r}")
+
+    if "output" not in ctx:
+        raise KeyError("Pipeline finished but ctx['output'] is missing")
+
+    return ctx

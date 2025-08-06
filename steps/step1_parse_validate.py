@@ -5,4 +5,9 @@ def parse_and_validate(ctx):
     - 필수 값 누락 시 기본값/에러 처리
     - 남은 기간(D-day) 계산
     """
-    pass
+    text = str(ctx.get("input", {}).get("text") or "")
+    inv  = str(ctx.get("input", {}).get("investment") or "")
+    ctx.setdefault("input", {})
+    ctx["input"]["text"] = f"{text} [1단계: 입력검증]"
+    ctx["input"]["investment"] = inv
+    return ctx

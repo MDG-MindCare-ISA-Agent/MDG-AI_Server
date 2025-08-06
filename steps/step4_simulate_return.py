@@ -6,4 +6,5 @@ def simulate_return(ctx):
     - 해지 vs 유지 vs 방어적 유지 시나리오 계산
     - 세제 혜택 반영 (비과세/분리과세)
     """
-    pass
+    ctx["input"]["text"] = f"{ctx['input'].get('text','')} -> [4단계: 수익시뮬레이션]"
+    return ctx
