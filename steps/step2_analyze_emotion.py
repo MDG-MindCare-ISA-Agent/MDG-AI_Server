@@ -12,5 +12,7 @@ def analyze_emotion(ctx):
         return ctx
 
     emotion_result = analyze_with_hyperclova(text)
+    if "type" not in emotion_result:
+        emotion_result["type"] = "info"
     ctx["emotion"] = emotion_result
     return ctx
