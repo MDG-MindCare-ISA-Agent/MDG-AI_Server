@@ -1,4 +1,3 @@
-# steps/step3a_fetch_info.py
 from routing import needs_info
 from services.info_service import get_market_snapshot
 

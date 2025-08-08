@@ -101,7 +101,7 @@ class SimulationService:
 
         system_prompt = (
             "당신은 투자 시뮬레이션 전문가입니다.\n"
-            "아래 JSON **한 개 객체**만 출력하세요. 마지막 원소 뒤 콤마 금지, 문자열은 큰따옴표.\n"
+            "아래 JSON 한 개 객체만 출력하세요. 마지막 원소 뒤 콤마 금지, 문자열은 큰따옴표.\n"
             "{ \"cagr\": float, \"max_dd\": float, \"vol\": float, \"equity_curve\": [float] }"
         )
 

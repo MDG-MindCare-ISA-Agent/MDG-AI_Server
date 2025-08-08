@@ -1,4 +1,3 @@
-# steps/step2b_route_plan.py
 from routing import derive_plan
 
 def route_plan(ctx):

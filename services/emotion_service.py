@@ -1,4 +1,3 @@
-# services/emotion_service.py (analyze_with_hyperclova)
 import os, re, json, requests
 from dotenv import load_dotenv
 
@@ -6,7 +5,33 @@ load_dotenv()
 API_KEY = os.getenv("CLOVA_API_KEY")
 ENDPOINT = "https://clovastudio.stream.ntruss.com/v3/chat-completions/HCX-005"
 
+def _fallback_emotion(user_text: str) -> dict:
+    """CLOVA 키/네트워크가 없을 때 간단 규칙 기반."""
+    t = user_text.lower()
+    emo = "info"
+    primary = "중립"
+    if any(k in t for k in ["힘들", "떨어", "마이너스", "손실", "불안", "걱정"]):
+        emo, primary = "emotion", "불안"
+    elif any(k in t for k in ["분석", "위험", "가장", "문제", "워스트"]):
+        emo, primary = "analysis", "중립"
+    elif any(k in t for k in ["전략", "추천", "어떻게 할", "계획"]):
+        emo, primary = "advice", "중립"
+    empathy = "말씀만으로도 충분히 마음고생이 느껴져요. 같이 하나씩 정리해 볼게요."
+    fq = "혹시 지금 가장 신경 쓰이는 종목/상황이 있나요?"
+    return {
+        "type": emo,
+        "primary": primary,
+        "confidence": 0.6,
+        "triggers": [],
+        "empathy": empathy,
+        "followup_question": fq,
+        "message": empathy
+    }
+
 def analyze_with_hyperclova(user_text: str) -> dict:
+    if not API_KEY:
+        return _fallback_emotion(user_text)
+
     headers = {
         "Authorization": f"Bearer {API_KEY}",
         "Content-Type": "application/json; charset=utf-8",
@@ -76,38 +101,20 @@ def analyze_with_hyperclova(user_text: str) -> dict:
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_text}
         ],
-        "topP": 0.8,
-        "topK": 0,
-        "maxTokens": 256,
-        "temperature": 0.5,
-        "repetitionPenalty": 1.1,
-        "stop": [],
-        "seed": 0,
-        "includeAiFilters": True
+        "topP": 0.7, "topK": 0, "maxTokens": 256, "temperature": 0.4,
+        "repetitionPenalty": 1.05, "stop": [], "seed": 0, "includeAiFilters": True
     }
-
-    res = requests.post(ENDPOINT, headers=headers, json=payload)
-    if res.status_code != 200:
-        raise RuntimeError(f"API 호출 실패: {res.status_code} {res.text}")
-
-    data = res.json()
-    text_output = data["result"]["message"]["content"].strip()
-
-    m = re.search(r"\{.*\}", text_output, re.DOTALL)
-    if not m:
-        raise RuntimeError(f"모델 응답에 JSON이 없습니다: {text_output}")
-
-    json_str = m.group(0)
     try:
-        obj = json.loads(json_str)
-    except json.JSONDecodeError as e:
-        raise RuntimeError(f"JSON 파싱 실패: {e} / 원본: {json_str}")
-
-    # 안전 보정: type 누락 시 info로
-    if "type" not in obj:
-        obj["type"] = "info"
-    # empathy 누락 시 빈 문자열
-    # services/emotion_service.py (리턴 직전)
-    obj.setdefault("empathy", "")
-    obj["message"] = obj.get("empathy") or ""  # 혹은 좀 더 다듬은 한두 문장
-    return obj
+        res = requests.post(ENDPOINT, headers=headers, json=payload, timeout=(5, 30))
+        if res.status_code != 200:
+            return _fallback_emotion(user_text)
+        text_output = res.json()["result"]["message"]["content"].strip()
+        m = re.search(r"\{.*\}", text_output, re.DOTALL)
+        if not m:
+            return _fallback_emotion(user_text)
+        obj = json.loads(m.group(0))
+        obj.setdefault("empathy", "")
+        obj["message"] = obj.get("empathy") or ""
+        return obj
+    except Exception:
+        return _fallback_emotion(user_text)
