@@ -7,6 +7,10 @@ from pprint import pprint
 _CONVOS: Dict[str, List[Dict[str, Any]]] = {}
 _STATE: Dict[str, Dict[str, Any]] = {}  # 마지막 선택지 등
 
+def get_profile(convo_id): return _STATE.get(convo_id, {}).get("profile")
+def set_profile(convo_id, profile):
+    _STATE.setdefault(convo_id, {})["profile"] = profile
+
 def get_convo_id(session) -> str:
     cid = session.get("cid")
     if not cid:
