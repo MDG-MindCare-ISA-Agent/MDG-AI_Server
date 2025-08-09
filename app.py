@@ -1,6 +1,7 @@
 from flask import Flask, request, jsonify, render_template_string, session
 from pipeline import run_pipeline
 from services.memory_service import get_convo_id, reset_memory, load_history
+import os
 
 app = Flask(__name__)
 app.secret_key = "change-me-please"  # 개발용. 실제 배포는 환경변수 사용 권장.
@@ -129,5 +130,6 @@ def api_reset():
     return jsonify({"ok": True, "answer": "대화 메모리를 초기화했어요."})
 
 if __name__ == "__main__":
-    # reloader 켜면 인메모리 히스토리 날아감
-    app.run(debug=True, use_reloader=False)
+    # 배포 환경에서도 돌아가게: 환경변수 PORT 사용 + 0.0.0.0 바인딩
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False, threaded=True)
