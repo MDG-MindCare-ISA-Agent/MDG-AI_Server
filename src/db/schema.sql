@@ -1,0 +1,6 @@
+CREATE TABLE IF NOT EXISTS capm_beta_cache (
+  ticker VARCHAR(32) PRIMARY KEY,
+  source VARCHAR(16) NOT NULL,
+  beta DOUBLE,
+  fetched_at TIMESTAMP NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

@@ -1,0 +1,30 @@
+services:
+  - type: web
+    name: isa-psy-finance
+    env: docker
+    plan: free
+    autoDeploy: true
+    healthCheckPath: /health
+    envVars:
+      - key: HCX_API_KEY
+        sync: false
+      - key: HCX_MODEL_NAME
+        value: HCX-005
+      - key: DB_HOST
+        value: svc.sel5.cloudtype.app
+      - key: DB_PORT
+        value: '32432'
+      - key: DB_NAME
+        value: mdg
+      - key: DB_USER
+        value: root
+      - key: DB_PASS
+        sync: false
+      - key: RF
+        value: '0.0284'
+      - key: RM_DOMESTIC
+        value: '0.050'
+      - key: RM_GLOBAL
+        value: '0.070'
+      - key: BETA_TTL_DAYS
+        value: '7'
