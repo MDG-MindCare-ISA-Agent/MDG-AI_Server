@@ -23,16 +23,22 @@ from .services.isa_tax import (
 )
 
 import pandas as pd
+from sqlalchemy import text  # ✅ 이름 존재 여부 체크용
 
 app = FastAPI(title="ISA Psy Finance API")
 
 # === 상태 ===
 meter = EmoMeter()
-conversation_log = []
+conversation_log: list[dict] = []
 
-# 최근 포트폴리오 컨텍스트 저장소
+# 세션 상태: 처음엔 이름을 먼저 받는다
+session_state = {
+    "await_name": True,
+    "name": None,
+}
+
+# 포트폴리오 컨텍스트(선택지 프롬프트 캐시)
 last_portfolio = {
-    "await_name": False,        # 이름 받는 중인지
     "name": None,               # 마지막으로 조회한 사용자 이름
     "prompts": None,            # {"current": "...", "maturity": "..."}
 }
@@ -43,8 +49,7 @@ class ChatIn(BaseModel):
 # ===== 공용 유틸 =====
 def is_portfolio_intent(txt: str) -> bool:
     t = txt.replace(" ", "")
-    keys = ("포트폴리오", "요약", "자산", "isa", "ISA")
-    return any(k in t for k in keys)
+    return any(k in t for k in ("포트폴리오", "요약", "자산", "isa", "ISA"))
 
 def is_select_current(txt: str) -> bool:
     t = txt.replace(" ", "")
@@ -183,16 +188,76 @@ def chat(in_: ChatIn):
     txt = in_.text.strip()
     meter.tick()
 
-    # ========== 0) 종료 멘트 처리(선택 사항) ==========
+    # 0) 세션 시작: '첫 메시지 = 이름' (✅ 존재 검증 추가)
+    if session_state["await_name"]:
+        name_try = txt
+        engine = get_engine()
+        exists = False
+        try:
+            with engine.begin() as conn:
+                row = conn.execute(text("SELECT 1 FROM users WHERE name=:n LIMIT 1"), {"n": name_try}).fetchone()
+                exists = row is not None
+        except Exception:
+            # DB 오류 시에도 안전하게 이름 재요청
+            exists = False
+
+        if not exists:
+            reply = f"'{name_try}'라는 이름을 찾지 못했어요. 등록된 성함으로 다시 입력해 주세요."
+            conversation_log.extend([
+                {"role": "user", "content": txt},
+                {"role": "assistant", "content": reply},
+            ])
+            # 계속 이름 대기 상태 유지
+            session_state["await_name"] = True
+            session_state["name"] = None
+            last_portfolio["name"] = None
+            last_portfolio["prompts"] = None
+            return {"reply": reply, "metrics": {"anxiety": meter.anxiety, "loss_aversion": meter.loss_aversion}}
+
+        # 존재하는 이름 → 세션 확정
+        session_state["name"] = name_try
+        session_state["await_name"] = False
+        last_portfolio["name"] = name_try
+        last_portfolio["prompts"] = None
+
+        reply = (
+            f"{name_try} 고객님, 반갑습니다. 어떤 것을 도와드릴까요? "
+            "포트폴리오 요약이 필요하시면 '포트폴리오'라고 말씀해 주세요. "
+            "(대화를 마치실 땐 '종료'를 입력하면 요약과 시뮬레이션을 한 번에 보여드려요)"
+        )
+        conversation_log.extend([
+            {"role": "user", "content": txt},
+            {"role": "assistant", "content": reply},
+        ])
+        return {"reply": reply, "metrics": {"anxiety": meter.anxiety, "loss_aversion": meter.loss_aversion}}
+
     # === 종료 분기 ===
     if txt in ("종료", "그만", "quit", "exit"):
         summary = build_session_summary()
-        reply = "상담을 종료할게요. 아래에 오늘 세션 요약을 정리했어요."
 
-        conversation_log.append({"role": "user", "content": txt})
-        conversation_log.append({"role": "assistant", "content": reply})
+        # 세션 이름이 있으면 시뮬도 함께 반환
+        sim = None
+        if session_state["name"]:
+            try:
+                result = build_portfolio_for_user(session_state["name"])
+                last_portfolio["prompts"] = result["report_prompts"]
+                sim = {
+                    "name": session_state["name"],
+                    "years_left": result["years_left"],
+                    "current_total": result["current_total"],
+                    "forecast_total": result["forecast_total"],
+                    "mix_rm_msg": result["mix_rm_msg"],
+                }
+            except Exception:
+                sim = None
 
-        # ✅ 안전 리셋 (reset() 없을 때 직접 0으로)
+        reply = "상담을 종료할게요. 요약과 포트폴리오 시뮬 결과를 아래에 정리했어요."
+        conversation_log.extend([
+            {"role": "user", "content": txt},
+            {"role": "assistant", "content": reply},
+        ])
+
+        # 안전 리셋 (reset() 없을 때 직접 0으로)
         try:
             meter.reset()  # 있으면 사용
         except AttributeError:
@@ -203,22 +268,62 @@ def chat(in_: ChatIn):
             if hasattr(meter, "last_ts"):
                 meter.last_ts = None
 
-        # 포트폴리오 흐름도 초기화(다음 대화에 섞이지 않게)
-        last_portfolio["await_name"] = False
+        # 포트폴리오 흐름/로그 초기화
         last_portfolio["name"] = None
         last_portfolio["prompts"] = None
-
-        # 로그는 필요하면 유지해도 되지만, 완전 초기화 원하면 아래 유지
         conversation_log.clear()
+
+        # 다음 세션을 위해 이름 재요청 모드로 복귀
+        session_state["await_name"] = True
+        session_state["name"] = None
 
         return {
             "reply": reply,
+            "summary_preface": "대화를 기반으로 산출된 불안도와 회피도입니다.",
             "summary": summary,
+            "simulation": sim,
             "metrics": {"anxiety": summary["불안지수"], "loss_aversion": summary["회피성향"]},
         }
 
+    # 1) 포트폴리오 트리거: 저장된 이름으로 즉시 준비
+    if is_portfolio_intent(txt):
+        name = session_state["name"]
+        if not name:
+            # 이례적 상태: 이름 없으면 다시 받기
+            session_state["await_name"] = True
+            reply = "어떤 사용자의 포트폴리오를 볼까요? 이름을 알려주세요. (예: 이현주)"
+            conversation_log.extend([
+                {"role": "user", "content": txt},
+                {"role": "assistant", "content": reply},
+            ])
+            return {"reply": reply, "metrics": {"anxiety": meter.anxiety, "loss_aversion": meter.loss_aversion}}
 
-    # ========== 1) '현재 해지' / '3년 유지' 선택 분기 ==========
+        try:
+            result = build_portfolio_for_user(name)
+        except ValueError:
+            # DB에 이름이 없으면 재요청
+            session_state["await_name"] = True
+            session_state["name"] = None
+            last_portfolio["name"] = None
+            last_portfolio["prompts"] = None
+            reply = f"'{name}' 사용자를 찾지 못했어요. 성함을 다시 알려주시면 재시도할게요."
+            conversation_log.extend([
+                {"role": "user", "content": txt},
+                {"role": "assistant", "content": reply},
+            ])
+            return {"reply": reply, "metrics": {"anxiety": meter.anxiety, "loss_aversion": meter.loss_aversion}}
+
+        # 성공: 선택지 프롬프트 캐시
+        last_portfolio["name"] = name
+        last_portfolio["prompts"] = result["report_prompts"]
+        reply = f"'{name}'님의 포트폴리오 요약을 준비했어요. '현재 해지' 또는 '3년 유지' 중에 선택해 주세요."
+        conversation_log.extend([
+            {"role": "user", "content": txt},
+            {"role": "assistant", "content": reply},
+        ])
+        return {"reply": reply, "metrics": {"anxiety": meter.anxiety, "loss_aversion": meter.loss_aversion}}
+
+    # 2) 포트폴리오 선택지 응답
     if last_portfolio.get("prompts"):
         if is_select_current(txt):
             prompt = last_portfolio["prompts"]["current"]
@@ -230,8 +335,8 @@ def chat(in_: ChatIn):
             except Exception:
                 reply = "지금은 요약을 불러오지 못했어요. 잠시 뒤 다시 요청해 주실까요?"
             conversation_log.extend([
-                {"role":"user","content":txt},
-                {"role":"assistant","content":reply},
+                {"role": "user", "content": txt},
+                {"role": "assistant", "content": reply},
             ])
             return {"reply": reply, "metrics": {"anxiety": meter.anxiety, "loss_aversion": meter.loss_aversion}}
 
@@ -245,53 +350,12 @@ def chat(in_: ChatIn):
             except Exception:
                 reply = "지금은 요약을 불러오지 못했어요. 잠시 뒤 다시 요청해 주실까요?"
             conversation_log.extend([
-                {"role":"user","content":txt},
-                {"role":"assistant","content":reply},
+                {"role": "user", "content": txt},
+                {"role": "assistant", "content": reply},
             ])
             return {"reply": reply, "metrics": {"anxiety": meter.anxiety, "loss_aversion": meter.loss_aversion}}
 
-    # ========== 2) 포트폴리오 플로우: 트리거 or 이름 대기 ==========
-    if last_portfolio["await_name"]:
-        # 이번 입력을 '이름'으로 처리
-        name = txt
-        try:
-            result = build_portfolio_for_user(name)
-        except ValueError:
-            last_portfolio["await_name"] = False
-            last_portfolio["name"] = None
-            last_portfolio["prompts"] = None
-            reply = f"'{name}' 사용자를 찾지 못했어요. 다른 이름으로 다시 알려주실 수 있을까요?"
-            conversation_log.extend([
-                {"role":"user","content":txt},
-                {"role":"assistant","content":reply},
-            ])
-            return {"reply": reply, "metrics": {"anxiety": meter.anxiety, "loss_aversion": meter.loss_aversion}}
-
-        # 성공: 프롬프트 저장
-        last_portfolio["await_name"] = False
-        last_portfolio["name"] = name
-        last_portfolio["prompts"] = result["report_prompts"]
-
-        reply = f"'{name}'님의 포트폴리오 요약을 준비했어요. 궁금한 쪽(현재 해지 vs 3년 유지)을 알려주시면 설명을 맞춰드릴게요."
-        conversation_log.extend([
-            {"role":"user","content":txt},
-            {"role":"assistant","content":reply},
-        ])
-        return {"reply": reply, "metrics": {"anxiety": meter.anxiety, "loss_aversion": meter.loss_aversion}}
-
-    if is_portfolio_intent(txt):
-        # 이름 요청 단계로 전환
-        last_portfolio["await_name"] = True
-        last_portfolio["name"] = None
-        last_portfolio["prompts"] = None
-        reply = "어떤 사용자의 포트폴리오를 볼까요? 이름을 알려주세요. (예: 이현주)"
-        conversation_log.extend([
-            {"role":"user","content":txt},
-            {"role":"assistant","content":reply},
-        ])
-        return {"reply": reply, "metrics": {"anxiety": meter.anxiety, "loss_aversion": meter.loss_aversion}}
-
-    # ========== 3) 일반 공감 챗 (가드레일→감정 프롬프트) ==========
+    # 3) 일반 공감 챗 (가드레일→감정 프롬프트)
     if guardrails.triggered(txt):
         reply = guardrails.reply()
     else:

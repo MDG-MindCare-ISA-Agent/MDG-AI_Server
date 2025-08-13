@@ -4,114 +4,369 @@
     <meta charset="utf-8" />
     <title>ISA 심리 상담 챗봇</title>
     <style>
+      :root {
+        --bg: #f6f7fb;
+        --card: #ffffff;
+        --line: #e6e8ef;
+        --text: #101828;
+        --muted: #667085;
+        --user: #0b5fff;
+        --bot: #0a8a34;
+      }
+      * {
+        box-sizing: border-box;
+      }
       body {
-        font-family: system-ui, sans-serif;
-        max-width: 820px;
-        margin: 0 auto;
-        padding: 16px;
+        font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto,
+          'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif;
+        background: var(--bg);
+        color: var(--text);
+        margin: 0;
+        padding: 24px;
+        display: grid;
+        place-items: start center;
+      }
+      .wrap {
+        width: 100%;
+        max-width: 880px;
       }
       h1 {
+        margin: 0 0 6px;
         text-align: center;
       }
+      .guide {
+        text-align: center;
+        color: var(--muted);
+        font-size: 14px;
+        margin-bottom: 14px;
+      }
       #log {
-        border: 1px solid #ddd;
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        padding: 14px 14px 6px;
+        height: 520px;
+        overflow-y: auto;
+      }
+
+      /* ===== chat bubbles ===== */
+      .row {
+        width: 100%;
+        display: flex;
+        margin: 10px 0;
+        gap: 10px;
+      }
+      .row.bot {
+        justify-content: flex-start;
+      }
+      .row.user {
+        justify-content: flex-end;
+      }
+      .avatar {
+        flex: 0 0 36px;
+        height: 36px;
+        border-radius: 50%;
+        display: grid;
+        place-items: center;
+        font-size: 18px;
+        background: #eef2ff;
+        color: #1d4ed8;
+      }
+      .row.user .avatar {
+        background: #e6f4ff;
+        color: var(--user);
+      }
+      .bubble {
+        max-width: 72%;
+        padding: 10px 12px;
+        border-radius: 14px;
+        border: 1px solid var(--line);
+        background: #fff;
+        position: relative;
+        box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04);
+        line-height: 1.45;
+        word-break: break-word;
+      }
+      .row.bot .bubble {
+        border-color: #d7efd9;
+      }
+      .row.user .bubble {
+        background: #0b5fff;
+        color: #fff;
+        border-color: #0b5fff;
+      }
+      .name {
+        font-weight: 700;
+        font-size: 12px;
+        margin-bottom: 4px;
+      }
+      .row.bot .name {
+        color: var(--bot);
+      }
+      .row.user .name {
+        color: #dbe7ff;
+      }
+
+      /* tail */
+      .row.bot .bubble:after {
+        content: '';
+        position: absolute;
+        left: -6px;
+        top: 14px;
+        border-width: 8px;
+        border-style: solid;
+        border-color: transparent #fff transparent transparent;
+        filter: drop-shadow(-1px 0 0 var(--line));
+      }
+      .row.user .bubble:after {
+        content: '';
+        position: absolute;
+        right: -6px;
+        top: 14px;
+        border-width: 8px;
+        border-style: solid;
+        border-color: transparent transparent transparent #0b5fff;
+      }
+
+      /* blocks (summary/sim) */
+      .block {
+        background: #fff;
+        border: 1px solid var(--line);
         border-radius: 12px;
         padding: 12px;
-        height: 420px;
-        overflow-y: auto;
-        background: #fafafa;
+        margin: 8px 0 0 46px; /* indent under bot */
       }
-      .msg {
-        margin: 6px 0;
+      .block h3 {
+        margin: 0 0 6px;
+        font-size: 15px;
       }
-      .user {
-        font-weight: 600;
-        color: #006ad4;
+      .meta {
+        color: var(--muted);
+        font-size: 13px;
       }
-      .bot {
-        font-weight: 600;
-        color: #0a8a34;
-      }
-      form {
+
+      /* form */
+      .bar {
         margin-top: 12px;
         display: flex;
         gap: 8px;
+        align-items: center;
       }
       input[type='text'] {
         flex: 1;
-        padding: 10px;
-        border: 1px solid #ccc;
-        border-radius: 8px;
+        padding: 12px;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: #fff;
       }
       button {
-        padding: 10px 14px;
+        padding: 12px 14px;
         border: 0;
-        border-radius: 8px;
+        border-radius: 10px;
         background: #111827;
         color: #fff;
         cursor: pointer;
       }
-      button:hover {
-        background: #0b1220;
+      button.secondary {
+        background: #f3f4f6;
+        color: #111;
+        border: 1px solid var(--line);
+      }
+      button:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+      }
+
+      /* spinner inside bubble */
+      .typing {
+        display: inline-flex;
+        gap: 6px;
+        align-items: center;
+      }
+      .dot {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: #c1c9d6;
+        animation: b 1.2s infinite ease-in-out;
+      }
+      .dot:nth-child(2) {
+        animation-delay: 0.15s;
+      }
+      .dot:nth-child(3) {
+        animation-delay: 0.3s;
+      }
+      @keyframes b {
+        0%,
+        80%,
+        100% {
+          transform: translateY(0);
+          opacity: 0.5;
+        }
+        40% {
+          transform: translateY(-4px);
+          opacity: 1;
+        }
+      }
+      .footnote {
+        text-align: center;
+        color: var(--muted);
+        font-size: 12px;
+        margin-top: 8px;
       }
     </style>
   </head>
   <body>
-    <h1>ISA 심리 상담 챗봇</h1>
+    <div class="wrap">
+      <h1>ISA 심리 상담 챗봇</h1>
+      <div class="guide">
+        처음에는 <b>성함</b>만 입력해 주세요. 대화를 마치실 땐 <b>'종료'</b>라고
+        입력하면 <b>요약과 시뮬레이션</b>을 한 번에 보여드려요.
+      </div>
 
-    <div id="log"></div>
+      <div id="log"></div>
 
-    <form id="chat-form">
-      <input
-        type="text"
-        id="user-input"
-        placeholder="메시지를 입력하세요..."
-        required
-      />
-      <button type="submit">전송</button>
-      <button
-        type="button"
-        onclick="input.value='종료'; document.getElementById('chat-form').dispatchEvent(new Event('submit'));"
-      >
-        종료
-      </button>
-    </form>
+      <form id="chat-form" class="bar">
+        <input
+          id="user-input"
+          type="text"
+          placeholder="메시지를 입력하세요..."
+          required
+          autofocus
+        />
+        <button id="send-btn" type="submit">전송</button>
+        <button
+          id="exit-btn"
+          class="secondary"
+          type="button"
+          title="대화 종료 및 요약"
+        >
+          종료
+        </button>
+      </form>
+      <div class="footnote">
+        답변을 불러오는 동안, 봇 말풍선에서 점(…) 애니메이션이 보입니다.
+      </div>
+    </div>
 
     <script>
+      const log = document.getElementById('log');
       const form = document.getElementById('chat-form');
       const input = document.getElementById('user-input');
-      const log = document.getElementById('log');
+      const sendBtn = document.getElementById('send-btn');
+      const exitBtn = document.getElementById('exit-btn');
 
-      function addMessage(sender, text) {
+      // ===== helpers =====
+      function setBusy(busy) {
+        input.disabled = busy;
+        sendBtn.disabled = busy;
+        exitBtn.disabled = busy;
+      }
+
+      function rowEl(sender) {
+        const r = document.createElement('div');
+        r.className = `row ${sender}`;
+        return r;
+      }
+
+      function bubbleEl(sender, html) {
+        const b = document.createElement('div');
+        b.className = 'bubble';
+        b.innerHTML = html || '';
+        return b;
+      }
+
+      function avatarEl(sender) {
+        const a = document.createElement('div');
+        a.className = 'avatar';
+        a.textContent = sender === 'bot' ? '🤖' : '🙂';
+        return a;
+      }
+
+      function nameEl(sender) {
+        const n = document.createElement('div');
+        n.className = 'name';
+        n.textContent = sender === 'bot' ? '챗봇' : '사용자';
+        return n;
+      }
+
+      function refocus() {
+        setTimeout(() => {
+          input.focus({ preventScroll: true });
+        }, 0);
+      }
+
+      function addBubble(sender, text, { loading = false } = {}) {
+        const r = rowEl(sender);
+        if (sender === 'bot') r.appendChild(avatarEl(sender));
+
+        const b = bubbleEl(sender);
+        const header = nameEl(sender);
+        b.appendChild(header);
+
+        const body = document.createElement('div');
+        body.className = 'body';
+
+        if (loading) {
+          body.innerHTML = `<span class="typing"><span class="dot"></span><span class="dot"></span><span class="dot"></span></span>`;
+        } else {
+          body.textContent = text ?? '';
+        }
+        b.appendChild(body);
+
+        r.appendChild(b);
+        if (sender === 'user') r.appendChild(avatarEl(sender));
+
+        log.appendChild(r);
+        log.scrollTop = log.scrollHeight;
+
+        return { row: r, bubble: b, body };
+      }
+
+      function updateBubbleToText(bubbleRefs, text) {
+        bubbleRefs.body.classList.remove('typing');
+        bubbleRefs.body.innerHTML = '';
+        bubbleRefs.body.textContent = text ?? '';
+        log.scrollTop = log.scrollHeight;
+      }
+
+      function addBlock(title, html) {
         const div = document.createElement('div');
-        div.className = 'msg';
-        div.innerHTML = `<span class="${sender}">${
-          sender === 'user' ? '🙂 사용자' : '🤖 챗봇'
-        }:</span> ${text}`;
+        div.className = 'block';
+        div.innerHTML = `<h3>${title}</h3>${html}`;
         log.appendChild(div);
         log.scrollTop = log.scrollHeight;
       }
 
-      function addSummary(summary) {
-        const div = document.createElement('div');
-        div.className = 'msg';
-        div.innerHTML = `<div style="margin-top:8px; padding:10px; border:1px dashed #bbb; border-radius:8px; background:#fff;">
-            <div style="font-weight:700; margin-bottom:6px;">🧾 세션 요약</div>
-            <div>감정: ${summary.감정 ?? '-'}</div>
-            <div>성향: ${summary.성향 ?? '-'}</div>
-            <div>불안지수: ${summary.불안지수}</div>
-            <div>회피성향: ${summary.회피성향}</div>
-          </div>`;
-        log.appendChild(div);
-        log.scrollTop = log.scrollHeight;
+      function numberComma(v) {
+        try {
+          return Math.round(v)
+            .toString()
+            .replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+        } catch {
+          return v ?? '-';
+        }
       }
 
+      // ===== initial greet bubble =====
+      addBubble(
+        'bot',
+        '안녕하세요! ISA 계좌 관련 고민이 있으시면 무엇이든 말해주시면 도와드리겠습니다. 먼저 성함을 알려주실까요?'
+      );
+
+      // ===== send message flow =====
       form.addEventListener('submit', async (e) => {
         e.preventDefault();
         const text = input.value.trim();
         if (!text) return;
-        addMessage('user', text);
+
+        // user bubble (right)
+        addBubble('user', text);
         input.value = '';
+
+        // bot loading bubble (left) — will morph into final text
+        const loadingRef = addBubble('bot', '', { loading: true });
+        setBusy(true);
 
         try {
           const res = await fetch('/chat', {
@@ -120,13 +375,124 @@
             body: JSON.stringify({ text }),
           });
           const data = await res.json();
-          addMessage('bot', data.reply || '응답이 없습니다.');
 
-          if (data.summary) {
-            addSummary(data.summary);
+          // replace spinner with actual reply
+          updateBubbleToText(loadingRef, data.reply || '응답이 없습니다.');
+
+          // append summary/simulation blocks on exit
+          if (data.summary || data.simulation) {
+            if (data.summary) {
+              const s = data.summary;
+              const preface =
+                data.summary_preface ||
+                '대화를 기반으로 산출된 불안도와 회피도입니다.';
+              addBlock(
+                '세션 요약',
+                `
+                <div class="meta">${preface}</div>
+                <ul>
+                  <li>감정: <b>${s['감정'] ?? '-'}</b></li>
+                  <li>성향: <b>${s['성향'] ?? '-'}</b></li>
+                  <li>불안지수: <b>${s['불안지수'] ?? '-'}</b></li>
+                  <li>회피성향: <b>${s['회피성향'] ?? '-'}</b></li>
+                </ul>
+              `
+              );
+            }
+            if (data.simulation) {
+              const m = data.simulation;
+              addBlock(
+                '포트폴리오 시뮬레이션',
+                `
+                <ul>
+                  <li>사용자: <b>${m.name}</b></li>
+                  <li>남은 기간(년): <b>${(m.years_left ?? 0).toFixed(
+                    2
+                  )}</b></li>
+                  <li>현재 평가액 합계: <b>${numberComma(
+                    m.current_total
+                  )}</b> 원</li>
+                  <li>만기 예상 평가액 합계: <b>${numberComma(
+                    m.forecast_total
+                  )}</b> 원</li>
+                </ul>
+                <div class="meta">${m.mix_rm_msg || ''}</div>
+              `
+              );
+            }
           }
         } catch (err) {
-          addMessage('bot', '❌ 오류: 서버와 연결할 수 없습니다.');
+          updateBubbleToText(loadingRef, '❌ 오류: 서버와 연결할 수 없습니다.');
+        } finally {
+          setBusy(false);
+          refocus();
+        }
+      });
+
+      // ===== “종료” button -> sends "종료" with same flow =====
+      exitBtn.addEventListener('click', async () => {
+        const text = '종료';
+        addBubble('user', text);
+
+        const loadingRef = addBubble('bot', '', { loading: true });
+        setBusy(true);
+
+        try {
+          const res = await fetch('/chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text }),
+          });
+          const data = await res.json();
+
+          updateBubbleToText(loadingRef, data.reply || '응답이 없습니다.');
+
+          if (data.summary || data.simulation) {
+            if (data.summary) {
+              const s = data.summary;
+              const preface =
+                data.summary_preface ||
+                '대화를 기반으로 산출된 불안도와 회피도입니다.';
+              addBlock(
+                '세션 요약',
+                `
+                <div class="meta">${preface}</div>
+                <ul>
+                  <li>감정: <b>${s['감정'] ?? '-'}</b></li>
+                  <li>성향: <b>${s['성향'] ?? '-'}</b></li>
+                  <li>불안지수: <b>${s['불안지수'] ?? '-'}</b></li>
+                  <li>회피성향: <b>${s['회피성향'] ?? '-'}</b></li>
+                </ul>
+              `
+              );
+            }
+            if (data.simulation) {
+              const m = data.simulation;
+              addBlock(
+                '포트폴리오 시뮬레이션',
+                `
+                <ul>
+                  <li>사용자: <b>${m.name}</b></li>
+                  <li>남은 기간(년): <b>${(m.years_left ?? 0).toFixed(
+                    2
+                  )}</b></li>
+                  <li>현재 평가액 합계: <b>${numberComma(
+                    m.current_total
+                  )}</b> 원</li>
+                  <li>만기 예상 평가액 합계: <b>${numberComma(
+                    m.forecast_total
+                  )}</b> 원</li>
+                </ul>
+                <div class="meta">${m.mix_rm_msg || ''}</div>
+              `
+              );
+            }
+          }
+        } catch {
+          updateBubbleToText(loadingRef, '❌ 오류: 서버와 연결할 수 없습니다.');
+        } finally {
+          setBusy(false);
+          refocus();
         }
       });
     </script>
