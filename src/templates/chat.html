@@ -48,8 +48,7 @@
         height: 520px;
         overflow-y: auto;
       }
-
-      /* ===== chat bubbles ===== */
+      /* bubbles */
       .row {
         width: 100%;
         display: flex;
@@ -106,8 +105,6 @@
       .row.user .name {
         color: #dbe7ff;
       }
-
-      /* tail */
       .row.bot .bubble:after {
         content: '';
         position: absolute;
@@ -127,8 +124,7 @@
         border-style: solid;
         border-color: transparent transparent transparent #0b5fff;
       }
-
-      /* blocks (summary/sim) */
+      /* blocks */
       .block {
         background: #fff;
         border: 1px solid var(--line);
@@ -144,7 +140,6 @@
         color: var(--muted);
         font-size: 13px;
       }
-
       /* form */
       .bar {
         margin-top: 12px;
@@ -176,8 +171,7 @@
         opacity: 0.6;
         cursor: not-allowed;
       }
-
-      /* spinner inside bubble */
+      /* typing dots */
       .typing {
         display: inline-flex;
         gap: 6px;
@@ -256,11 +250,14 @@
       const sendBtn = document.getElementById('send-btn');
       const exitBtn = document.getElementById('exit-btn');
 
-      // ===== helpers =====
-      function setBusy(busy) {
-        input.disabled = busy;
-        sendBtn.disabled = busy;
-        exitBtn.disabled = busy;
+      /* ---------- helpers ---------- */
+      function setBusy(b) {
+        input.disabled = b;
+        sendBtn.disabled = b;
+        exitBtn.disabled = b;
+      }
+      function refocus() {
+        setTimeout(() => input.focus({ preventScroll: true }), 0);
       }
 
       function rowEl(sender) {
@@ -268,21 +265,17 @@
         r.className = `row ${sender}`;
         return r;
       }
-
-      function bubbleEl(sender, html) {
+      function bubbleEl() {
         const b = document.createElement('div');
         b.className = 'bubble';
-        b.innerHTML = html || '';
         return b;
       }
-
       function avatarEl(sender) {
         const a = document.createElement('div');
         a.className = 'avatar';
         a.textContent = sender === 'bot' ? '🤖' : '🙂';
         return a;
       }
-
       function nameEl(sender) {
         const n = document.createElement('div');
         n.className = 'name';
@@ -290,51 +283,39 @@
         return n;
       }
 
-      function refocus() {
-        setTimeout(() => {
-          input.focus({ preventScroll: true });
-        }, 0);
-      }
-
       function addBubble(sender, text, { loading = false } = {}) {
         const r = rowEl(sender);
         if (sender === 'bot') r.appendChild(avatarEl(sender));
-
-        const b = bubbleEl(sender);
+        const b = bubbleEl();
         const header = nameEl(sender);
         b.appendChild(header);
-
         const body = document.createElement('div');
         body.className = 'body';
-
         if (loading) {
           body.innerHTML = `<span class="typing"><span class="dot"></span><span class="dot"></span><span class="dot"></span></span>`;
         } else {
           body.textContent = text ?? '';
         }
         b.appendChild(body);
-
         r.appendChild(b);
         if (sender === 'user') r.appendChild(avatarEl(sender));
-
         log.appendChild(r);
         log.scrollTop = log.scrollHeight;
-
         return { row: r, bubble: b, body };
       }
 
-      function updateBubbleToText(bubbleRefs, text) {
-        bubbleRefs.body.classList.remove('typing');
-        bubbleRefs.body.innerHTML = '';
-        bubbleRefs.body.textContent = text ?? '';
+      function updateBubbleToText(refs, text) {
+        refs.body.classList.remove('typing');
+        refs.body.innerHTML = '';
+        refs.body.textContent = text ?? '';
         log.scrollTop = log.scrollHeight;
       }
 
       function addBlock(title, html) {
-        const div = document.createElement('div');
-        div.className = 'block';
-        div.innerHTML = `<h3>${title}</h3>${html}`;
-        log.appendChild(div);
+        const d = document.createElement('div');
+        d.className = 'block';
+        d.innerHTML = `<h3>${title}</h3>${html}`;
+        log.appendChild(d);
         log.scrollTop = log.scrollHeight;
       }
 
@@ -348,23 +329,98 @@
         }
       }
 
-      // ===== initial greet bubble =====
+      function nl2br(s) {
+        return (s ?? '')
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/\n/g, '<br>');
+      }
+
+      function renderExitBlocks(data) {
+        if (!data) return;
+
+        if (data.summary) {
+          const s = data.summary;
+          const preface =
+            data.summary_preface ||
+            '대화를 기반으로 산출된 불안도와 회피도입니다.';
+          addBlock(
+            '세션 요약',
+            `
+            <div class="meta">${preface}</div>
+            <ul>
+              <li>감정: <b>${s['감정'] ?? '-'}</b></li>
+              <li>성향: <b>${s['성향'] ?? '-'}</b></li>
+              <li>불안지수: <b>${s['불안지수'] ?? '-'}</b></li>
+              <li>회피성향: <b>${s['회피성향'] ?? '-'}</b></li>
+            </ul>
+          `
+          );
+        }
+
+        if (data.simulation) {
+          const m = data.simulation;
+          addBlock(
+            '포트폴리오 시뮬레이션',
+            `
+            <ul>
+              <li>사용자: <b>${m.name}</b></li>
+              <li>남은 기간(년): <b>${(m.years_left ?? 0).toFixed(2)}</b></li>
+              <li>현재 평가액 합계: <b>${numberComma(
+                m.current_total
+              )}</b> 원</li>
+              <li>만기 예상 평가액 합계: <b>${numberComma(
+                m.forecast_total
+              )}</b> 원</li>
+            </ul>
+            <div class="meta">${m.mix_rm_msg || ''}</div>
+          `
+          );
+        }
+
+        if (data.comparison) {
+          addBlock(
+            '시나리오 비교',
+            `<div class="meta">${nl2br(data.comparison)}</div>`
+          );
+        }
+
+        if (data.reports) {
+          if (data.reports.current) {
+            addBlock(
+              '지금 바로 해지 리포트',
+              `<div>${nl2br(data.reports.current)}</div>`
+            );
+          }
+          if (data.reports.maturity) {
+            addBlock(
+              '3년 만기 유지 리포트',
+              `<div>${nl2br(data.reports.maturity)}</div>`
+            );
+          }
+        }
+
+        if (data.encouragement) {
+          addBlock('응원 메시지', `<div>${nl2br(data.encouragement)}</div>`);
+        }
+      }
+
+      /* ---------- initial greet ---------- */
       addBubble(
         'bot',
         '안녕하세요! ISA 계좌 관련 고민이 있으시면 무엇이든 말해주시면 도와드리겠습니다. 먼저 성함을 알려주실까요?'
       );
 
-      // ===== send message flow =====
+      /* ---------- send flow ---------- */
       form.addEventListener('submit', async (e) => {
         e.preventDefault();
         const text = input.value.trim();
         if (!text) return;
 
-        // user bubble (right)
         addBubble('user', text);
         input.value = '';
 
-        // bot loading bubble (left) — will morph into final text
         const loadingRef = addBubble('bot', '', { loading: true });
         setBusy(true);
 
@@ -375,52 +431,8 @@
             body: JSON.stringify({ text }),
           });
           const data = await res.json();
-
-          // replace spinner with actual reply
           updateBubbleToText(loadingRef, data.reply || '응답이 없습니다.');
-
-          // append summary/simulation blocks on exit
-          if (data.summary || data.simulation) {
-            if (data.summary) {
-              const s = data.summary;
-              const preface =
-                data.summary_preface ||
-                '대화를 기반으로 산출된 불안도와 회피도입니다.';
-              addBlock(
-                '세션 요약',
-                `
-                <div class="meta">${preface}</div>
-                <ul>
-                  <li>감정: <b>${s['감정'] ?? '-'}</b></li>
-                  <li>성향: <b>${s['성향'] ?? '-'}</b></li>
-                  <li>불안지수: <b>${s['불안지수'] ?? '-'}</b></li>
-                  <li>회피성향: <b>${s['회피성향'] ?? '-'}</b></li>
-                </ul>
-              `
-              );
-            }
-            if (data.simulation) {
-              const m = data.simulation;
-              addBlock(
-                '포트폴리오 시뮬레이션',
-                `
-                <ul>
-                  <li>사용자: <b>${m.name}</b></li>
-                  <li>남은 기간(년): <b>${(m.years_left ?? 0).toFixed(
-                    2
-                  )}</b></li>
-                  <li>현재 평가액 합계: <b>${numberComma(
-                    m.current_total
-                  )}</b> 원</li>
-                  <li>만기 예상 평가액 합계: <b>${numberComma(
-                    m.forecast_total
-                  )}</b> 원</li>
-                </ul>
-                <div class="meta">${m.mix_rm_msg || ''}</div>
-              `
-              );
-            }
-          }
+          renderExitBlocks(data); // <-- 종료 응답이면 하단 블록 렌더
         } catch (err) {
           updateBubbleToText(loadingRef, '❌ 오류: 서버와 연결할 수 없습니다.');
         } finally {
@@ -429,7 +441,7 @@
         }
       });
 
-      // ===== “종료” button -> sends "종료" with same flow =====
+      /* ---------- exit button flow ---------- */
       exitBtn.addEventListener('click', async () => {
         const text = '종료';
         addBubble('user', text);
@@ -444,50 +456,8 @@
             body: JSON.stringify({ text }),
           });
           const data = await res.json();
-
           updateBubbleToText(loadingRef, data.reply || '응답이 없습니다.');
-
-          if (data.summary || data.simulation) {
-            if (data.summary) {
-              const s = data.summary;
-              const preface =
-                data.summary_preface ||
-                '대화를 기반으로 산출된 불안도와 회피도입니다.';
-              addBlock(
-                '세션 요약',
-                `
-                <div class="meta">${preface}</div>
-                <ul>
-                  <li>감정: <b>${s['감정'] ?? '-'}</b></li>
-                  <li>성향: <b>${s['성향'] ?? '-'}</b></li>
-                  <li>불안지수: <b>${s['불안지수'] ?? '-'}</b></li>
-                  <li>회피성향: <b>${s['회피성향'] ?? '-'}</b></li>
-                </ul>
-              `
-              );
-            }
-            if (data.simulation) {
-              const m = data.simulation;
-              addBlock(
-                '포트폴리오 시뮬레이션',
-                `
-                <ul>
-                  <li>사용자: <b>${m.name}</b></li>
-                  <li>남은 기간(년): <b>${(m.years_left ?? 0).toFixed(
-                    2
-                  )}</b></li>
-                  <li>현재 평가액 합계: <b>${numberComma(
-                    m.current_total
-                  )}</b> 원</li>
-                  <li>만기 예상 평가액 합계: <b>${numberComma(
-                    m.forecast_total
-                  )}</b> 원</li>
-                </ul>
-                <div class="meta">${m.mix_rm_msg || ''}</div>
-              `
-              );
-            }
-          }
+          renderExitBlocks(data); // <-- 종료 응답이면 하단 블록 렌더
         } catch {
           updateBubbleToText(loadingRef, '❌ 오류: 서버와 연결할 수 없습니다.');
         } finally {

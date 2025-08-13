@@ -2,6 +2,24 @@ from typing import Dict, Any, Tuple
 import pandas as pd
 import numpy as np
 
+def format_krw(x):
+    try:
+        return f"{int(round(float(x))):,}원"
+    except Exception:
+        return "-"
+
+def safe_div(a, b):
+    if b is None:
+        return None
+    try:
+        b = float(b)
+        if b == 0 or (isinstance(b, float) and np.isnan(b)):
+            return None
+        return float(a) / b
+    except Exception:
+        return None
+
+
 # ---- A. 전처리 ----
 def prepare_isa_data(df_users: pd.DataFrame, df_assets: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame]:
     df_users = df_users.copy()
@@ -48,6 +66,7 @@ def calculate_taxed_profit(profit: Any, is_isa_period_met: bool, asset_type: str
         tax = taxable * 0.099
         return amount - tax, tax
 
+    # 중도해지 => ISA 요건 미충족
     if not is_isa_period_met:
         if atype in ('BOND','BOND_ETF','REITS_FUND','OVERSEAS_ETF'):
             tax = total * 0.154
@@ -56,7 +75,8 @@ def calculate_taxed_profit(profit: Any, is_isa_period_met: bool, asset_type: str
             tax = distribution * 0.154
             after = capital_gain + (distribution - tax)
             return after, tax, {'notes': '중도해지: 국내 주식형 ETF 분배금 15.4%, 매매차익 0%'}
-
+    
+    # ISA 요건 충족
     if atype in ('BOND','BOND_ETF','REITS_FUND','OVERSEAS_ETF'):
         after, tax = isa_9p9(total)
         return after, tax, {'notes': f'ISA 충족: {asset_type} 손익통산, 한도내 0%/초과 9.9%'}
@@ -115,9 +135,6 @@ def run_isa_tax_calculation(
     return df_cur, df_mat
 
 # ---- D. 머지/요약/프롬프트 ----
-def safe_div(a, b):
-    if b is None or (isinstance(b, float) and np.isnan(b)) or b == 0: return None
-    return a / b
 
 def merge_with_investment(results_df: pd.DataFrame, assets_df: pd.DataFrame) -> pd.DataFrame:
     df = results_df.copy()

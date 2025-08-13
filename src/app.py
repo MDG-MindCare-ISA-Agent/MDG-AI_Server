@@ -105,7 +105,25 @@ def build_portfolio_for_user(user_name: str):
         "current_total": current_total,
         "forecast_total": forecast_total,
         "report_prompts": {"current": prompt_cur, "maturity": prompt_mat},
+        "overall_cur": overall_cur,
+        "overall_mat": overall_mat,
     }
+
+def _diff_and_text(overall_cur, overall_mat):
+    """세후수익 차이(diff)와 비교 문구를 동시에 반환"""
+    try:
+        cur_profit = float(overall_cur['total_after_tax_profit'].iloc[0])
+        mat_profit = float(overall_mat['total_after_tax_profit'].iloc[0])
+        diff = mat_profit - cur_profit
+        if diff > 0:
+            txt = f"3년 유지 시, 현재 해지보다 세후 수익이 약 {diff:,.0f}원 더 높습니다."
+        elif diff < 0:
+            txt = f"현재 해지 시, 3년 유지보다 세후 수익이 약 {-diff:,.0f}원 더 높습니다."
+        else:
+            txt = "두 시나리오의 세후 수익 차이는 없습니다."
+        return diff, txt
+    except Exception:
+        return None, "두 시나리오 비교 데이터를 불러오지 못했습니다."
 
 # --- 세션 요약용: 대화 로그로 감정/성향 뽑아내기 ---
 def finalize_profile_from_log(conv_log: list[str] | list[dict]) -> tuple[str | None, str | None]:
@@ -162,6 +180,58 @@ def build_session_summary():
         "불안지수": round(meter.anxiety, 2),
         "회피성향": round(meter.loss_aversion, 2),
     }
+
+def build_comparison_text(overall_cur, overall_mat):
+    try:
+        cur_profit = float(overall_cur['total_after_tax_profit'].iloc[0])
+        mat_profit = float(overall_mat['total_after_tax_profit'].iloc[0])
+        diff = mat_profit - cur_profit
+        if diff > 0:
+            return diff, f"3년 유지 시, 현재 해지보다 세후 수익이 약 {diff:,.0f}원 더 높습니다."
+        elif diff < 0:
+            return diff, f"현재 해지 시, 3년 유지보다 세후 수익이 약 {(-diff):,.0f}원 더 높습니다."
+        else:
+            return 0.0, "두 시나리오의 세후 수익 차이는 없습니다."
+    except Exception:
+        return None, "두 시나리오 비교 데이터를 불러오지 못했습니다."
+
+def build_encouragement(summary: dict, diff_profit: float | None) -> str:
+    emotion = (summary or {}).get("감정") or "중립"
+    tendency = (summary or {}).get("성향") or "중립적"
+
+    # 어떤 선택이 유리한지에 따라 톤을 달리한다.
+    if diff_profit is None:
+        headline = "데이터 확인에 약간의 문제가 있었어요."
+        tip = "조금만 있다가 다시 시도하면 정상적으로 비교가 가능할 거예요."
+    elif diff_profit > 0:
+        headline = "숫자 기준으로는 ‘3년 유지’가 더 유리해 보여요."
+        tip = "세후 수익이 더 커질 여지가 있으니, 급하지 않다면 계획대로 유지하는 쪽을 검토해보세요."
+    elif diff_profit < 0:
+        headline = "숫자 기준으로는 ‘현재 해지’가 상대적으로 유리해 보여요."
+        tip = "필요 자금·리스크 허용도까지 함께 고려해, 일부만 정리하는 전략도 선택지예요."
+    else:
+        headline = "두 선택의 차이가 크지 않아요."
+        tip = "현금흐름·목표 시점 등 비재무적 요인을 반영해 결정해보면 좋아요."
+
+    # 감정/성향 맞춤 한 줄
+    emo_map = {
+        "불안": "불안하게 느끼는 건 너무 자연스러워요. 정보로 차근차근 확인하면 충분히 잘 하실 수 있어요.",
+        "혼란": "정보가 많아 혼란스러울 수 있어요. 핵심 숫자만 잡고 한 단계씩 정리해봐요.",
+        "후회": "과거 판단에 너무 매이지 마세요. 오늘의 선택이 내일의 방향을 만듭니다.",
+        "기대": "기대가 있을 때일수록 기본 가정을 점검하면 더 견고해져요.",
+        "기쁨": "좋은 흐름일 때 원칙을 재확인하면 성과를 오래 끌고 갈 수 있어요.",
+        "중립": "차분히 숫자를 확인하고 원칙대로 가면 충분합니다.",
+    }
+    emo_line = emo_map.get(emotion, emo_map["중립"])
+
+    tend_map = {
+        "안정적": "안정 추구 성향이라면 분산과 현금버퍼를 유지하며 결정해보세요.",
+        "중립적": "수익/리스크 균형을 기준으로 포지션을 일부 조정하는 전략이 잘 맞습니다.",
+        "공격적": "수익 기대가 크더라도 손실 한도와 기간 규칙을 함께 세워주세요.",
+    }
+    tend_line = tend_map.get(tendency, tend_map["중립적"])
+
+    return f"{headline}\n{emo_line}\n{tend_line}\n{tip}"
 
 # ===== 라우트 =====
 @app.get("/health")
@@ -237,6 +307,9 @@ def chat(in_: ChatIn):
 
         # 세션 이름이 있으면 시뮬도 함께 반환
         sim = None
+        comparison_text = None
+        reports = None  
+        diff_profit = None 
         if session_state["name"]:
             try:
                 result = build_portfolio_for_user(session_state["name"])
@@ -248,8 +321,41 @@ def chat(in_: ChatIn):
                     "forecast_total": result["forecast_total"],
                     "mix_rm_msg": result["mix_rm_msg"],
                 }
+                comparison_text = build_comparison_text(
+                    result["overall_cur"], result["overall_mat"]
+                )
+
+                diff_profit, comparison_text = build_comparison_text(
+                    result["overall_cur"], result["overall_mat"]
+                )
+            
+                pc = result["report_prompts"]["current"]
+                pm = result["report_prompts"]["maturity"]
+
+                try:
+                    current_report = hyperclova_client.chat([
+                        {"role": "system", "content": "당신은 수치 근거로 간결하게 말하는 금융 상담가입니다."},
+                        {"role": "user", "content": pc},
+                    ])
+                except Exception:
+                    current_report = "현재 해지 리포트를 생성하지 못했습니다."
+
+                try:
+                    maturity_report = hyperclova_client.chat([
+                        {"role": "system", "content": "당신은 수치 근거로 간결하게 말하는 금융 상담가입니다."},
+                        {"role": "user", "content": pm},
+                    ])
+                except Exception:
+                    maturity_report = "3년 유지 리포트를 생성하지 못했습니다."
+
+                reports = {
+                    "current": current_report,
+                    "maturity": maturity_report,
+                }
             except Exception:
                 sim = None
+
+        encouragement = build_encouragement(summary, diff_profit)
 
         reply = "상담을 종료할게요. 요약과 포트폴리오 시뮬 결과를 아래에 정리했어요."
         conversation_log.extend([
@@ -282,6 +388,9 @@ def chat(in_: ChatIn):
             "summary_preface": "대화를 기반으로 산출된 불안도와 회피도입니다.",
             "summary": summary,
             "simulation": sim,
+            "comparison": comparison_text,
+            "encouragement": encouragement,  
+            "reports": reports,
             "metrics": {"anxiety": summary["불안지수"], "loss_aversion": summary["회피성향"]},
         }
 
@@ -325,35 +434,80 @@ def chat(in_: ChatIn):
 
     # 2) 포트폴리오 선택지 응답
     if last_portfolio.get("prompts"):
-        if is_select_current(txt):
-            prompt = last_portfolio["prompts"]["current"]
-            try:
-                reply = hyperclova_client.chat([
-                    {"role": "system", "content": "당신은 투자자에게 ISA 세금/혜택/기대수익을 오해 없이 쉽게 설명하는 상담사입니다."},
-                    {"role": "user", "content": prompt},
-                ])
-            except Exception:
-                reply = "지금은 요약을 불러오지 못했어요. 잠시 뒤 다시 요청해 주실까요?"
+        name = session_state["name"]
+        # 안전장치: 이름 없으면 재요청
+        if not name:
+            session_state["await_name"] = True
+            reply = "어떤 사용자의 포트폴리오를 볼까요? 이름을 알려주세요. (예: 이현주)"
             conversation_log.extend([
                 {"role": "user", "content": txt},
                 {"role": "assistant", "content": reply},
             ])
             return {"reply": reply, "metrics": {"anxiety": meter.anxiety, "loss_aversion": meter.loss_aversion}}
 
-        if is_select_maturity(txt):
-            prompt = last_portfolio["prompts"]["maturity"]
-            try:
-                reply = hyperclova_client.chat([
-                    {"role": "system", "content": "당신은 투자자에게 ISA 세금/혜택/기대수익을 오해 없이 쉽게 설명하는 상담사입니다."},
-                    {"role": "user", "content": prompt},
-                ])
-            except Exception:
-                reply = "지금은 요약을 불러오지 못했어요. 잠시 뒤 다시 요청해 주실까요?"
+        # 최신 포트폴리오/프롬프트/비교 데이터 로드
+        try:
+            result = build_portfolio_for_user(name)
+        except Exception:
+            reply = "요약을 불러오지 못했어요. 잠시 뒤 다시 시도해 주세요."
             conversation_log.extend([
                 {"role": "user", "content": txt},
                 {"role": "assistant", "content": reply},
             ])
             return {"reply": reply, "metrics": {"anxiety": meter.anxiety, "loss_aversion": meter.loss_aversion}}
+
+        last_portfolio["name"] = name
+        last_portfolio["prompts"] = result["report_prompts"]
+
+        # 비교(차액 + 문구)
+        diff_profit, comparison_text = _diff_and_text(result["overall_cur"], result["overall_mat"])
+        # 세션 요약(감정/성향) 기반 응원
+        session_summary = build_session_summary()
+        encouragement = build_encouragement(session_summary, diff_profit)
+
+        # 선택지: 현재해지
+        if is_select_current(txt):
+            pc = result["report_prompts"]["current"]
+            try:
+                current_report = hyperclova_client.chat([
+                    {"role": "system", "content": "당신은 수치 근거로 간결하게 말하는 금융 상담가입니다."},
+                    {"role": "user", "content": pc},
+                ])
+            except Exception:
+                current_report = "현재 해지 리포트를 생성하지 못했습니다."
+
+            reply = f"'{name}'님의 현재 해지 리포트를 정리했어요."
+            conversation_log.extend([
+                {"role": "user", "content": txt},
+                {"role": "assistant", "content": reply},
+            ])
+            return {
+                "reply": reply,
+                "reports": {"current": current_report},
+                "metrics": {"anxiety": meter.anxiety, "loss_aversion": meter.loss_aversion},
+            }
+
+        # 선택지: 3년유지
+        if is_select_maturity(txt):
+            pm = result["report_prompts"]["maturity"]
+            try:
+                maturity_report = hyperclova_client.chat([
+                    {"role": "system", "content": "당신은 수치 근거로 간결하게 말하는 금융 상담가입니다."},
+                    {"role": "user", "content": pm},
+                ])
+            except Exception:
+                maturity_report = "3년 유지 리포트를 생성하지 못했습니다."
+
+            reply = f"'{name}'님의 3년 유지 리포트를 정리했어요."
+            conversation_log.extend([
+                {"role": "user", "content": txt},
+                {"role": "assistant", "content": reply},
+            ])
+            return {
+                "reply": reply,
+                "reports": {"maturity": maturity_report}, 
+                "metrics": {"anxiety": meter.anxiety, "loss_aversion": meter.loss_aversion},
+            }
 
     # 3) 일반 공감 챗 (가드레일→감정 프롬프트)
     if guardrails.triggered(txt):
