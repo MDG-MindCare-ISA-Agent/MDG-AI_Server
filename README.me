@@ -1,6 +1,75 @@
-# ISA Psy Finance
+# 📊 ISA 심리 상담 챗봇
 
-## 실행
-```bash
-pip install -r requirements.txt
-uvicorn src.app:app --reload
+## 📌 서비스 소개
+ISA 심리 상담 챗봇은 사용자의 포트폴리오 수익률 분석과 감정/성향 분석을 결합한 금융 상담 서비스입니다.  
+사용자는 현재 해지와 3년 만기 유지 두 가지 시나리오를 비교하여  
+세후 수익, 손익률, 절세 효과를 직관적으로 확인할 수 있습니다.
+
+또한 대화 로그 기반으로 사용자의 감정과 투자 성향을 분석하여,  
+개인별 맞춤 조언과 함께 의사결정을 돕습니다.
+
+---
+
+## 🚀 주요 기능
+- 사용자 식별: 이름 입력 후 DB에서 사용자 확인
+- 데이터 분석: 실시간 시세 반영, CAPM 보강, ISA 세제 시뮬레이션
+- 시나리오 보고서 생성:  
+  - 현재 해지(`reports.current`)  
+  - 3년 만기 유지(`reports.maturity`)
+- 맞춤 응답: 비교 문구(`comparison`) + 조언(`encouragement`)
+- 감정/성향 분석: 대화 로그를 기반으로 JSON 추출
+
+---
+
+## 🏗 서비스 아키텍처
+- 프론트엔드: HTML 기반 채팅 UI (Next.js / React Native로 확장 가능)  
+- 백엔드: FastAPI + SQLAlchemy + pandas  
+- AI 엔진: HyperCLOVA API  
+- 데이터 처리 단계:
+  1. 사용자 자산 로드
+  2. CAPM 보강
+  3. 실시간 시세 반영
+  4. 잔여 기간/만기 예측
+  5. 세제 계산 및 투자 성과 분석
+  6. 시나리오별 보고서 생성
+
+---
+
+## 🔄 알고리즘 흐름
+1. 이름 입력 → DB 검증 후 세션 시작  
+2. 자산 데이터 로드 → 포트폴리오 구성 정보 확보  
+3. CAPM·시세 반영 → 기대 수익률 계산  
+4. 세제 계산 → 현재 해지 vs 3년 만기 유지 시나리오 생성  
+5. 손익률·총계 산출 → 결과 정리  
+6. LLM 보고서 생성 → HyperCLOVA API 호출  
+7. 감정·성향 분석 → JSON 형태로 추출  
+8. 프론트엔드 렌더링 → 말풍선 UI + 결과 블록 표시
+
+---
+
+## 📈 CAPM 간단 설명
+CAPM(Capital Asset Pricing Model)은 자산의 기대 수익률을 계산하는 금융 모델입니다.  
+무위험 수익률, 시장 수익률, 자산의 민감도(베타)를 활용하여  
+위험 대비 수익률을 정량적으로 평가합니다.  
+본 서비스에서는 포트폴리오 평가와 맞춤형 조언의 근거로 사용됩니다.
+
+---
+
+## 💻 실행 방법
+
+uvicorn src.app:app --reload --host 0.0.0.0 --port 8000
+
+## 프로젝트 구조
+
+src/
+├── app.py                # FastAPI 메인 엔트리
+├── deps.py               # DB 연결 및 의존성
+├── prompts.py            # 프롬프트 템플릿
+├── services/
+│   ├── guardrails.py     # 안전 응답 필터
+│   ├── hyperclova_client.py # HyperCLOVA API 연동
+│   ├── emo_metrics.py    # 감정 분석 로직
+│   ├── portfolio.py      # 자산 데이터 처리
+│   └── isa_tax.py        # ISA 세제 계산
+└── templates/
+    └── chat.html         # 프론트엔드 채팅 UI
